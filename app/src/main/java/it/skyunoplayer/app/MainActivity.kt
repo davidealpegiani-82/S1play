@@ -78,11 +78,14 @@ class MainActivity : Activity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val host = request.url.host?.lowercase() ?: return true
+                // Keep top-level navigation inside the original page; embedded player resources
+                // continue loading normally, while external ad redirects are refused.
                 return !(host == "thedaddy.li" || host.endsWith(".thedaddy.li"))
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                installPopupProtection()
                 if (url.startsWith("https://thedaddy.li/")) restoreLastPlayer()
             }
         }
@@ -119,6 +122,39 @@ class MainActivity : Activity() {
         root.addView(column)
         setContentView(root)
         webView.loadUrl(startUrl)
+    }
+
+    private fun installPopupProtection() {
+        val js = """
+            (function() {
+              if (window.__skyUnoPopupGuard) return;
+              window.__skyUnoPopupGuard = true;
+
+              // Refuse script-created windows/popups.
+              try {
+                window.open = function() { return null; };
+              } catch (e) {}
+
+              // Refuse links and forms that try to open a separate tab/window.
+              document.addEventListener('click', function(e) {
+                var node = e.target;
+                var link = node && node.closest ? node.closest('a[target="_blank"]') : null;
+                if (link) {
+                  e.preventDefault();
+                  e.stopImmediatePropagation();
+                }
+              }, true);
+
+              document.addEventListener('submit', function(e) {
+                var form = e.target;
+                if (form && (form.target || '').toLowerCase() === '_blank') {
+                  e.preventDefault();
+                  e.stopImmediatePropagation();
+                }
+              }, true);
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
     }
 
     private fun restoreLastPlayer() {
