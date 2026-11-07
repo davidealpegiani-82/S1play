@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <title>Extractor & Player Sky Uno</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+    <style>
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .app {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+        }
+
+        .player-section {
+            height: 42vh;
+            min-height: 220px;
+            background: #000;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            flex: 0 0 auto;
+        }
+
+        .topbar {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px;
+            background: #000;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            flex-wrap: wrap;
+        }
+
+        .player-title {
+            flex: 1;
+            min-width: 120px;
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(4px);
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .file-btn, .export-btn {
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 13px;
+            padding: 10px 14px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .file-btn {
+            background: linear-gradient(135deg, #00cfff, #2f6bff);
+            color: #000;
+        }
+
+        .export-btn {
+            background: linear-gradient(135deg, #00e676, #00c853);
+            color: #000;
+            display: none; /* visibile solo quando ci sono canali */
+        }
+
+        .export-btn.visible {
+            display: inline-block;
+        }
+
+        .share-btn {
+            border: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 13px;
+            padding: 10px 14px;
+            cursor: pointer;
+            white-space: nowrap;
+            background: linear-gradient(135deg, #ffdf5d, #ff9800);
+            color: #111;
+            display: none;
+        }
+        .share-btn.visible { display: inline-block; }
+
+        .video-wrap {
+            flex: 1;
+            min-height: 0;
+            background: #000;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: #000;
+            object-fit: contain;
+        }
+
+        .list-section {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            background: #0b0b0b;
+            min-width: 0;
+        }
+
+        .list-header {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            background: #111;
+            font-size: 14px;
+            font-weight: bold;
+            flex: 0 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .table-wrap {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        tr {
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            cursor: pointer;
+        }
+
+        tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        tr.active {
+            background: rgba(0, 207, 255, 0.14);
+        }
+
+        td {
+            padding: 10px 8px;
+            vertical-align: middle;
+            font-size: 14px;
+        }
+
+        .col-logo {
+            width: 58px;
+            text-align: center;
+        }
+
+        .logo {
+            width: 42px;
+            height: 42px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #1a1a1a;
+            display: inline-block;
+        }
+
+        .name-box {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .channel-name {
+            font-weight: bold;
+            line-height: 1.2;
+        }
+
+        .channel-sub {
+            font-size: 12px;
+            opacity: 0.75;
+        }
+
+        .play-badge {
+            display: inline-block;
+            min-width: 58px;
+            text-align: center;
+            padding: 6px 8px;
+            border-radius: 999px;
+            background: #00cfff;
+            color: #000;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        /* ===== Mode PC / TV ===== */
+        body.desktop-tv-mode .app {
+            flex-direction: row-reverse;
+            align-items: flex-start;
+        }
+
+        body.desktop-tv-mode .player-section {
+            width: 70vw;
+            height: 46vh;
+            min-height: 320px;
+            max-height: 520px;
+            border-bottom: 0;
+            border-left: 1px solid rgba(255,255,255,0.08);
+            align-self: flex-start;
+        }
+
+        body.desktop-tv-mode .list-section {
+            width: 30vw;
+            height: 100vh;
+            flex: 0 0 auto;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #00e676;
+            color: #000;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 14px;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+    <div class="app">
+        <div class="player-section">
+            <div class="topbar">
+                <div class="player-title" id="playerTitle">Seleziona o carica un file HTML</div>
+                <div class="btn-group">
+                    <button class="file-btn" onclick="document.getElementById('fileInput').click()">📁 Carica File</button>
+                    <button class="export-btn" id="exportBtn" onclick="exportStandalone()">📥 Scarica HTML</button>
+                    <button class="share-btn" id="shareBtn" onclick="generateShareLink()">🔗 Genera link HTTPS</button>
+                </div>
+                <input type="file" id="fileInput" accept=".html,.txt,.json">
+            </div>
+
+            <div class="video-wrap">
+                <video id="video" controls autoplay playsinline webkit-playsinline x5-playsinline preload="auto"></video>
+            </div>
+        </div>
+
+        <div class="list-section">
+            <div class="list-header" id="listHeader">Canali Filtrati (Sky Uno): 0</div>
+            <div class="table-wrap">
+                <table>
+                    <tbody id="channelsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let channels = [];
+        let activeIndex = -1;
+        let hls = null;
+        const video = document.getElementById('video');
+        const playerTitle = document.getElementById('playerTitle');
+        const channelsBody = document.getElementById('channelsBody');
+        const listHeader = document.getElementById('listHeader');
+        const fileInput = document.getElementById('fileInput');
+        const exportBtn = document.getElementById('exportBtn');
+        const shareBtn = document.getElementById('shareBtn');
+        const toast = document.getElementById('toast');
+
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2800);
+        }
+
+        // Modalità adattiva Layout per PC/Mobile/TV
+        function applyLayoutMode() {
+            const w = window.innerWidth || document.documentElement.clientWidth || screen.width || 0;
+            const isWideScreen = w >= 900;
+            document.body.classList.toggle("desktop-tv-mode", isWideScreen);
+        }
+
+        // Configurazione HLS stabile: buffer grande, tollera ~15s di differita
+        const hlsConfig = {
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 60,
+            maxBufferLength: 90,          // buffer più grande
+            maxMaxBufferLength: 180,
+            maxBufferSize: 150 * 1000 * 1000,
+            maxBufferHole: 0.5,
+            highBufferWatchdogPeriod: 2,
+            nudgeOffset: 0.1,
+            nudgeMaxRetry: 5,
+            maxFragLookUpTolerance: 0.25,
+            liveSyncDurationCount: 5,     // resta più indietro (più stabile)
+            liveMaxLatencyDurationCount: 15, // tollera fino a ~15 segmenti di ritardo
+            liveDurationInfinity: true,
+            maxLiveSyncPlaybackRate: 1.2, // accelera poco se serve
+            manifestLoadingTimeOut: 20000,
+            manifestLoadingMaxRetry: 5,
+            manifestLoadingRetryDelay: 1000,
+            levelLoadingTimeOut: 20000,
+            levelLoadingMaxRetry: 5,
+            levelLoadingRetryDelay: 1000,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 6,
+            fragLoadingRetryDelay: 800,
+            startFragPrefetch: true,
+            testBandwidth: false
+        };
+
+        let bufferWatchdog = null;
+
+        // Rileva iOS / iPadOS / Safari iOS
+        function isIOS() {
+            const ua = navigator.userAgent || '';
+            const isAppleMobile = /iPad|iPhone|iPod/.test(ua);
+            const isIpadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+            return isAppleMobile || isIpadOS;
+        }
+
+        // Lettore HLS: su iOS usa SEMPRE il player nativo
+        function attachChannelSource(ch) {
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            if (bufferWatchdog) {
+                clearInterval(bufferWatchdog);
+                bufferWatchdog = null;
+            }
+
+            video.removeAttribute('src');
+            video.load();
+
+            const useNative = isIOS() || video.canPlayType('application/vnd.apple.mpegurl');
+
+            // ===== iOS / Safari nativo =====
+            if (useNative && (isIOS() || !Hls.isSupported())) {
+                console.log('Uso player nativo iOS/Safari');
+                video.src = ch.url;
+                video.playsInline = true;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+
+                const tryPlay = () => {
+                    video.play().catch((err) => {
+                        console.warn('Autoplay bloccato, tocca il video per avviare', err);
+                    });
+                };
+
+                video.addEventListener('loadedmetadata', tryPlay, { once: true });
+                video.addEventListener('canplay', tryPlay, { once: true });
+
+                // Se non parte, l'utente può toccare i controlli nativi
+                setTimeout(tryPlay, 300);
+                return;
+            }
+
+            // ===== Desktop / Android con hls.js =====
+            if (Hls.isSupported()) {
+                hls = new Hls(hlsConfig);
+                hls.loadSource(ch.url);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    video.play().catch(() => {});
+                });
+
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.warn('Network error → ripresa...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.warn('Media error → recovery...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.error('Errore fatale → ricarico stream');
+                                setTimeout(() => {
+                                    if (channels[activeIndex]) {
+                                        attachChannelSource(channels[activeIndex]);
+                                    }
+                                }, 2000);
+                                break;
+                        }
+                    }
+                });
+
+                bufferWatchdog = setInterval(() => {
+                    if (!hls || !video || video.paused) return;
+                    try {
+                        if (hls.liveSyncPosition && video.currentTime > 0) {
+                            const lag = hls.liveSyncPosition - video.currentTime;
+                            if (lag > 25) {
+                                video.currentTime = hls.liveSyncPosition - 8;
+                            }
+                        }
+                    } catch (e) {}
+                }, 8000);
+
+                video.addEventListener('waiting', function () {
+                    clearTimeout(video._stallTimer);
+                    video._stallTimer = setTimeout(() => {
+                        if (video.readyState < 3 && hls && !video.paused) {
+                            try {
+                                hls.recoverMediaError();
+                                hls.startLoad();
+                            } catch (e) {}
+                        }
+                    }, 8000);
+                });
+
+                video.addEventListener('playing', function () {
+                    clearTimeout(video._stallTimer);
+                });
+
+            } else {
+                // Fallback generico
+                video.src = ch.url;
+                video.addEventListener('loadedmetadata', function () {
+                    video.play().catch(() => {});
+                }, { once: true });
+            }
+        }
+
+        function loadChannel(index) {
+            if (!channels[index]) return;
+            activeIndex = index;
+            const ch = channels[index];
+            playerTitle.textContent = ch.name || "Canale";
+            highlightActiveRow();
+            attachChannelSource(ch);
+        }
+
+        function highlightActiveRow() {
+            const rows = document.querySelectorAll('tr[data-index]');
+            rows.forEach(function(row) {
+                const idx = parseInt(row.getAttribute('data-index'), 10);
+                row.classList.toggle('active', idx === activeIndex);
+            });
+        }
+
+        function renderChannels() {
+            channelsBody.innerHTML = '';
+            listHeader.textContent = `Canali Filtrati (Sky Uno): ${channels.length}`;
+
+            // Mostra/nascondi pulsante export
+            if (channels.length > 0) {
+                exportBtn.classList.add('visible');
+                shareBtn.classList.add('visible');
+            } else {
+                exportBtn.classList.remove('visible');
+                shareBtn.classList.remove('visible');
+            }
+
+            if (channels.length === 0) {
+                channelsBody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px; color:#888;">Nessun canale Sky Uno trovato. Carica il file HTML.</td></tr>';
+                return;
+            }
+
+            channels.forEach(function(ch, index) {
+                const tr = document.createElement('tr');
+                tr.setAttribute('data-index', index);
+
+                const tdLogo = document.createElement('td');
+                tdLogo.className = 'col-logo';
+                const img = document.createElement('img');
+                img.className = 'logo';
+                img.alt = ch.name || 'logo';
+                img.src = ch.logo || '';
+                img.onerror = function() { this.style.visibility = 'hidden'; };
+                tdLogo.appendChild(img);
+
+                const tdInfo = document.createElement('td');
+                const nameBox = document.createElement('div');
+                nameBox.className = 'name-box';
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'channel-name';
+                nameDiv.textContent = ch.name || 'Canale';
+                const subDiv = document.createElement('div');
+                subDiv.className = 'channel-sub';
+                subDiv.textContent = 'Tocca per riprodurre';
+                nameBox.appendChild(nameDiv);
+                nameBox.appendChild(subDiv);
+                tdInfo.appendChild(nameBox);
+
+                const tdAction = document.createElement('td');
+                tdAction.style.width = '80px';
+                tdAction.style.textAlign = 'right';
+                const badge = document.createElement('span');
+                badge.className = 'play-badge';
+                badge.textContent = '▶ Guarda';
+                tdAction.appendChild(badge);
+
+                tr.appendChild(tdLogo);
+                tr.appendChild(tdInfo);
+                tr.appendChild(tdAction);
+
+                tr.addEventListener('click', function() {
+                    loadChannel(index);
+                });
+
+                channelsBody.appendChild(tr);
+            });
+        }
+
+        // ========== GENERA VERSIONE STANDALONE ==========
+        function exportStandalone() {
+            if (!channels || channels.length === 0) {
+                alert("Nessun canale da esportare. Carica prima un file.");
+                return;
+            }
+
+            const channelsJSON = JSON.stringify(channels, null, 2);
+
+            // HTML autonomo con i canali già dentro
+            const standaloneHTML = `<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <title>Sky Uno Player</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; color: #fff; font-family: Arial, sans-serif; overflow: hidden; }
+        .app { width: 100vw; height: 100vh; display: flex; flex-direction: column; background: #000; }
+        .player-section { height: 42vh; min-height: 220px; background: #000; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; min-width: 0; flex: 0 0 auto; }
+        .topbar { flex: 0 0 60px; display: flex; align-items: center; padding: 12px; background: #000; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .player-title { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 12px; background: rgba(0,0,0,0.55); font-size: 14px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .video-wrap { flex: 1; min-height: 0; background: #000; }
+        video { width: 100%; height: 100%; display: block; background: #000; object-fit: contain; }
+        .list-section { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0b0b0b; min-width: 0; }
+        .list-header { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); background: #111; font-size: 14px; font-weight: bold; flex: 0 0 auto; }
+        .table-wrap { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; }
+        tr { border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
+        tr:hover { background: rgba(255,255,255,0.05); }
+        tr.active { background: rgba(0, 207, 255, 0.14); }
+        td { padding: 10px 8px; vertical-align: middle; font-size: 14px; }
+        .col-logo { width: 58px; text-align: center; }
+        .logo { width: 42px; height: 42px; object-fit: contain; border-radius: 8px; background: #1a1a1a; display: inline-block; }
+        .name-box { display: flex; flex-direction: column; gap: 3px; }
+        .channel-name { font-weight: bold; line-height: 1.2; }
+        .channel-sub { font-size: 12px; opacity: 0.75; }
+        .play-badge { display: inline-block; min-width: 58px; text-align: center; padding: 6px 8px; border-radius: 999px; background: #00cfff; color: #000; font-size: 12px; font-weight: bold; }
+        body.desktop-tv-mode .app { flex-direction: row-reverse; align-items: flex-start; }
+        body.desktop-tv-mode .player-section { width: 70vw; height: 46vh; min-height: 320px; max-height: 520px; border-bottom: 0; border-left: 1px solid rgba(255,255,255,0.08); align-self: flex-start; }
+        body.desktop-tv-mode .list-section { width: 30vw; height: 100vh; flex: 0 0 auto; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>
+</head>
+<body>
+    <div class="app">
+        <div class="player-section">
+            <div class="topbar">
+                <div class="player-title" id="playerTitle">Sky Uno</div>
+            </div>
+            <div class="video-wrap">
+                <video id="video" controls autoplay playsinline webkit-playsinline x5-playsinline preload="auto"></video>
+            </div>
+        </div>
+        <div class="list-section">
+            <div class="list-header" id="listHeader">Canali Sky Uno: ${channels.length}</div>
+            <div class="table-wrap">
+                <table><tbody id="channelsBody"></tbody></table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== CANALI INCORPORATI =====
+        const channels = ${channelsJSON};
+        // ==============================
+
+        let activeIndex = -1;
+        let hls = null;
+        const video = document.getElementById('video');
+        const playerTitle = document.getElementById('playerTitle');
+        const channelsBody = document.getElementById('channelsBody');
+
+        function applyLayoutMode() {
+            const w = window.innerWidth || document.documentElement.clientWidth || screen.width || 0;
+            document.body.classList.toggle("desktop-tv-mode", w >= 900);
+        }
+
+        const hlsConfig = {
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 60,
+            maxBufferLength: 90,
+            maxMaxBufferLength: 180,
+            maxBufferSize: 150 * 1000 * 1000,
+            maxBufferHole: 0.5,
+            highBufferWatchdogPeriod: 2,
+            nudgeOffset: 0.1,
+            nudgeMaxRetry: 5,
+            maxFragLookUpTolerance: 0.25,
+            liveSyncDurationCount: 5,
+            liveMaxLatencyDurationCount: 15,
+            liveDurationInfinity: true,
+            maxLiveSyncPlaybackRate: 1.2,
+            manifestLoadingTimeOut: 20000,
+            manifestLoadingMaxRetry: 5,
+            levelLoadingTimeOut: 20000,
+            levelLoadingMaxRetry: 5,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 6,
+            startFragPrefetch: true
+        };
+
+        let bufferWatchdog = null;
+
+        function isIOS() {
+            var ua = navigator.userAgent || '';
+            var isAppleMobile = /iPad|iPhone|iPod/.test(ua);
+            var isIpadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+            return isAppleMobile || isIpadOS;
+        }
+
+        function attachChannelSource(ch) {
+            if (hls) { hls.destroy(); hls = null; }
+            if (bufferWatchdog) { clearInterval(bufferWatchdog); bufferWatchdog = null; }
+            video.removeAttribute('src');
+            video.load();
+
+            var useNative = isIOS() || video.canPlayType('application/vnd.apple.mpegurl');
+
+            // iOS / Safari nativo
+            if (useNative && (isIOS() || !Hls.isSupported())) {
+                video.src = ch.url;
+                video.playsInline = true;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                var tryPlay = function() {
+                    video.play().catch(function() {});
+                };
+                video.addEventListener('loadedmetadata', tryPlay, { once: true });
+                video.addEventListener('canplay', tryPlay, { once: true });
+                setTimeout(tryPlay, 300);
+                return;
+            }
+
+            // Desktop / Android con hls.js
+            if (Hls.isSupported()) {
+                hls = new Hls(hlsConfig);
+                hls.loadSource(ch.url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function () { video.play().catch(function() {}); });
+
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                setTimeout(function() {
+                                    if (channels[activeIndex]) attachChannelSource(channels[activeIndex]);
+                                }, 2000);
+                                break;
+                        }
+                    }
+                });
+
+                bufferWatchdog = setInterval(function() {
+                    if (!hls || !video || video.paused) return;
+                    try {
+                        if (hls.liveSyncPosition && video.currentTime > 0) {
+                            var lag = hls.liveSyncPosition - video.currentTime;
+                            if (lag > 25) {
+                                video.currentTime = hls.liveSyncPosition - 8;
+                            }
+                        }
+                    } catch(e) {}
+                }, 8000);
+
+                video.addEventListener('waiting', function() {
+                    clearTimeout(video._stallTimer);
+                    video._stallTimer = setTimeout(function() {
+                        if (video.readyState < 3 && hls && !video.paused) {
+                            try {
+                                hls.recoverMediaError();
+                                hls.startLoad();
+                            } catch(e) {}
+                        }
+                    }, 8000);
+                });
+                video.addEventListener('playing', function() { clearTimeout(video._stallTimer); });
+
+            } else {
+                video.src = ch.url;
+                video.addEventListener('loadedmetadata', function() { video.play().catch(function() {}); }, { once: true });
+            }
+        }
+
+        function loadChannel(index) {
+            if (!channels[index]) return;
+            activeIndex = index;
+            const ch = channels[index];
+            playerTitle.textContent = ch.name || "Canale";
+            document.querySelectorAll('tr[data-index]').forEach(function(row) {
+                row.classList.toggle('active', parseInt(row.getAttribute('data-index'), 10) === activeIndex);
+            });
+            attachChannelSource(ch);
+        }
+
+        function renderChannels() {
+            channelsBody.innerHTML = '';
+            channels.forEach(function(ch, index) {
+                const tr = document.createElement('tr');
+                tr.setAttribute('data-index', index);
+
+                const tdLogo = document.createElement('td');
+                tdLogo.className = 'col-logo';
+                const img = document.createElement('img');
+                img.className = 'logo';
+                img.alt = ch.name || 'logo';
+                img.src = ch.logo || '';
+                img.onerror = function() { this.style.visibility = 'hidden'; };
+                tdLogo.appendChild(img);
+
+                const tdInfo = document.createElement('td');
+                const nameBox = document.createElement('div');
+                nameBox.className = 'name-box';
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'channel-name';
+                nameDiv.textContent = ch.name || 'Canale';
+                const subDiv = document.createElement('div');
+                subDiv.className = 'channel-sub';
+                subDiv.textContent = 'Tocca per riprodurre';
+                nameBox.appendChild(nameDiv);
+                nameBox.appendChild(subDiv);
+                tdInfo.appendChild(nameBox);
+
+                const tdAction = document.createElement('td');
+                tdAction.style.width = '80px';
+                tdAction.style.textAlign = 'right';
+                const badge = document.createElement('span');
+                badge.className = 'play-badge';
+                badge.textContent = '▶ Guarda';
+                tdAction.appendChild(badge);
+
+                tr.appendChild(tdLogo);
+                tr.appendChild(tdInfo);
+                tr.appendChild(tdAction);
+                tr.addEventListener('click', function() { loadChannel(index); });
+                channelsBody.appendChild(tr);
+            });
+        }
+
+        renderChannels();
+        if (channels.length > 0) loadChannel(0);
+        applyLayoutMode();
+        window.addEventListener('resize', applyLayoutMode);
+    <\/script>
+</body>
+</html>`;
+
+            // Download del file
+            const blob = new Blob([standaloneHTML], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const date = new Date().toISOString().slice(0, 10);
+            a.href = url;
+            a.download = `sky-uno-player-${date}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showToast("✅ File generato! Ora puoi inviarlo");
+        }
+
+        // Crea un link HTTPS autonomo: i canali sono codificati nel frammento URL
+        // (#channels=...), quindi non vengono caricati su un server né richiedono database.
+        function encodeBase64Url(text) {
+            const bytes = new TextEncoder().encode(text);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        }
+
+        function decodeBase64Url(value) {
+            const base64 = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);
+            const binary = atob(base64);
+            const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+            return new TextDecoder().decode(bytes);
+        }
+
+        async function generateShareLink() {
+            if (!channels.length) {
+                alert('Carica prima una playlist ed estrai i canali Sky Uno.');
+                return;
+            }
+            if (!/^https?:$/.test(location.protocol) || location.protocol === 'file:') {
+                alert('Per generare un link HTTPS, pubblica prima questo file su GitHub Pages, Netlify o un altro hosting HTTPS. Dopo la pubblicazione, il pulsante genererà i link condivisibili.');
+                return;
+            }
+            const link = location.href.split('#')[0] + '#channels=' + encodeBase64Url(JSON.stringify(channels));
+            if (link.length > 8000) {
+                alert('La playlist è troppo grande per essere condivisa in modo affidabile tramite un link. In questo caso usa “Scarica HTML” oppure serve un hosting con salvataggio dei file.');
+                return;
+            }
+            try {
+                if (navigator.share) {
+                    await navigator.share({ title: 'Sky Uno Player', text: 'Apri il player Sky Uno con i canali già caricati:', url: link });
+                    showToast('Link pronto per la condivisione');
+                } else if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(link);
+                    showToast('✅ Link HTTPS copiato! Puoi condividerlo');
+                } else {
+                    window.prompt('Copia questo link HTTPS e condividilo:', link);
+                }
+            } catch (err) {
+                if (err && err.name !== 'AbortError') {
+                    window.prompt('Copia questo link HTTPS e condividilo:', link);
+                }
+            }
+        }
+
+        function loadChannelsFromSharedLink() {
+            const match = location.hash.match(/(?:^#|&)channels=([^&]+)/);
+            if (!match) return;
+            try {
+                const sharedChannels = JSON.parse(decodeBase64Url(match[1]));
+                if (!Array.isArray(sharedChannels) || !sharedChannels.length || sharedChannels.some(ch => !ch || typeof ch.url !== 'string')) {
+                    throw new Error('Formato canali non valido');
+                }
+                channels = sharedChannels;
+                renderChannels();
+                loadChannel(0);
+                playerTitle.textContent = 'Sky Uno Player condiviso';
+                showToast(`Player pronto: ${channels.length} canali caricati`);
+            } catch (err) {
+                console.error('Link condiviso non valido:', err);
+                alert('Questo link non contiene una playlist valida o è stato copiato in modo incompleto.');
+            }
+        }
+
+        // Estrazione automatica array canali dal file caricato
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const content = evt.target.result;
+                let parsedChannels = null;
+
+                // Prova 1: cerca const channels = [...]
+                const match = content.match(/const\s+channels\s*=\s*(\[[\s\S]*?\]);/);
+                if (match && match[1]) {
+                    try {
+                        parsedChannels = JSON.parse(match[1]);
+                    } catch (err) {}
+                }
+
+                // Prova 2: se è un JSON puro
+                if (!parsedChannels) {
+                    try {
+                        const maybe = JSON.parse(content);
+                        if (Array.isArray(maybe)) parsedChannels = maybe;
+                    } catch (err) {}
+                }
+
+                if (parsedChannels && Array.isArray(parsedChannels)) {
+                    // Filtra solo Sky Uno
+                    channels = parsedChannels.filter(ch => ch.name && ch.name.toUpperCase().includes("SKY UNO"));
+
+                    renderChannels();
+                    if (channels.length > 0) {
+                        loadChannel(0);
+                        showToast(`Trovati ${channels.length} canali Sky Uno`);
+                    } else {
+                        alert("File letto, ma non è stato trovato alcun canale 'Sky Uno'.");
+                    }
+                } else {
+                    alert("Impossibile trovare la struttura dei canali nel file selezionato.");
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        loadChannelsFromSharedLink();
+        applyLayoutMode();
+        window.addEventListener('resize', applyLayoutMode);
+    </script>
+</body>
+</html>
