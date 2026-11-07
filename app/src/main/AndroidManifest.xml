@@ -3,7 +3,7 @@
     <application
         android:allowBackup="false"
         android:label="Sky UNO Player"
-        android:usesCleartextTraffic="false"
+        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:name=".MainActivity"
