@@ -3,12 +3,16 @@ package it.skyunoplayer.app
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -16,6 +20,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
@@ -31,6 +36,12 @@ class MainActivity : Activity() {
         Channel("SKY UNO PLUS HD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/52993.m3u8"),
         Channel("SKY UNO PLUS SD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/52994.m3u8")
     )
+    private lateinit var rootLayout: LinearLayout
+    private lateinit var headerLayout: LinearLayout
+    private lateinit var qualityLabel: TextView
+    private lateinit var channelScroll: HorizontalScrollView
+    private lateinit var actions: LinearLayout
+    private lateinit var fullButton: Button
     private lateinit var playerView: PlayerView
     private lateinit var status: TextView
     private lateinit var title: TextView
@@ -53,12 +64,12 @@ class MainActivity : Activity() {
         window.navigationBarColor = Color.BLACK
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val root = LinearLayout(this).apply {
+        rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(10, 13, 20))
             setPadding(dp(12), dp(8), dp(12), dp(10))
         }
-        val header = LinearLayout(this).apply {
+        headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
@@ -68,14 +79,8 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
-        val full = Button(this).apply {
-            text = "⛶"
-            contentDescription = "Schermo intero"
-            setOnClickListener { toggleFullscreen() }
-        }
-        header.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
-        header.addView(full, LinearLayout.LayoutParams(dp(56), dp(44)))
-        root.addView(header)
+        headerLayout.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
+        rootLayout.addView(headerLayout)
 
         playerView = PlayerView(this).apply {
             useController = true
@@ -84,7 +89,14 @@ class MainActivity : Activity() {
             setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             setBackgroundColor(Color.BLACK)
         }
-        root.addView(playerView, LinearLayout.LayoutParams(-1, 0, 1f))
+        fullButton = Button(this).apply {
+            text = "⛶"
+            contentDescription = "Schermo intero"
+            isAllCaps = false
+            setOnClickListener { toggleFullscreen() }
+        }
+        playerView.addView(fullButton, FrameLayout.LayoutParams(dp(56), dp(48), Gravity.TOP or Gravity.END))
+        rootLayout.addView(playerView, LinearLayout.LayoutParams(-1, 0, 1f))
 
         status = TextView(this).apply {
             text = "Seleziona una qualità per avviare SKY UNO"
@@ -92,13 +104,14 @@ class MainActivity : Activity() {
             setTextColor(Color.rgb(190, 200, 215))
             setPadding(dp(4), dp(9), dp(4), dp(9))
         }
-        root.addView(status)
-        root.addView(TextView(this).apply {
+        rootLayout.addView(status)
+        qualityLabel = TextView(this).apply {
             text = "QUALITÀ DISPONIBILI"
             textSize = 12f
             setTextColor(Color.rgb(145, 160, 180))
             setPadding(dp(2), dp(6), dp(2), dp(6))
-        })
+        }
+        rootLayout.addView(qualityLabel)
 
         val strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         channelButtons = channels.mapIndexed { index, _ ->
@@ -109,12 +122,13 @@ class MainActivity : Activity() {
                 setOnClickListener { playChannel(index) }
             }.also { strip.addView(it, LinearLayout.LayoutParams(-2, dp(48)).apply { marginEnd = dp(6) }) }
         }
-        root.addView(HorizontalScrollView(this).apply {
+        channelScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             addView(strip)
-        })
+        }
+        rootLayout.addView(channelScroll)
 
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(Button(this).apply {
             text = "↻ Riprova"
             setOnClickListener { if (activeIndex >= 0) playChannel(activeIndex) }
@@ -123,10 +137,14 @@ class MainActivity : Activity() {
             text = "Verifica flussi"
             setOnClickListener { runDiagnostics() }
         }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        root.addView(actions)
-        setContentView(root)
+        rootLayout.addView(actions)
+        setContentView(rootLayout)
 
-        player = ExoPlayer.Builder(this).build()
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(5000, 30000, 1000, 2000)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+        player = ExoPlayer.Builder(this).setLoadControl(loadControl).build()
         playerView.player = player
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -225,10 +243,42 @@ class MainActivity : Activity() {
 
     private fun toggleFullscreen() {
         fullscreen = !fullscreen
-        requestedOrientation = if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        if (fullscreen) window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        headerLayout.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        status.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        qualityLabel.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        channelScroll.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        actions.visibility = if (fullscreen) View.GONE else View.VISIBLE
+        rootLayout.setPadding(
+            if (fullscreen) 0 else dp(12),
+            if (fullscreen) 0 else dp(8),
+            if (fullscreen) 0 else dp(12),
+            if (fullscreen) 0 else dp(10)
+        )
+        fullButton.text = if (fullscreen) "×" else "⛶"
+        fullButton.contentDescription = if (fullscreen) "Esci da schermo intero" else "Schermo intero"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let { controller ->
+                if (fullscreen) {
+                    controller.systemBarsBehavior =
+                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    controller.hide(WindowInsets.Type.systemBars())
+                } else {
+                    controller.show(WindowInsets.Type.systemBars())
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = if (fullscreen) {
+                (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
+            } else {
+                View.SYSTEM_UI_FLAG_VISIBLE
+            }
+        }
     }
 
     private fun setStatus(message: String) { status.text = message }
