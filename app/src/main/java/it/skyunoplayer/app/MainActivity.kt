@@ -1,230 +1,247 @@
 package it.skyunoplayer.app
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.os.Bundle
-import android.view.View
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
 import android.view.WindowManager
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
+import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 
 class MainActivity : Activity() {
-    private lateinit var webView: WebView
-    private lateinit var root: FrameLayout
-    private lateinit var toolbar: LinearLayout
-    private var customView: View? = null
-    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
-    private val startUrl = "https://thedaddy.li/watch.php?id=881"
+    private data class Channel(val name: String, val url: String)
+    private val channels = listOf(
+        Channel("SKY UNO FULL HD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/29.m3u8"),
+        Channel("SKY UNO HD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/28.m3u8"),
+        Channel("SKY UNO 4K HEVC H265", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/6667.m3u8"),
+        Channel("SKY UNO SD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/27.m3u8"),
+        Channel("SKY UNO +1", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/5521.m3u8"),
+        Channel("SKY UNO PLUS FULL HD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/52992.m3u8"),
+        Channel("SKY UNO PLUS HD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/52993.m3u8"),
+        Channel("SKY UNO PLUS SD", "http://tacotaco61.inimdns.biz:80/live/alessiomgj/3CD3YJ2wpF/52994.m3u8")
+    )
+    private lateinit var playerView: PlayerView
+    private lateinit var status: TextView
+    private lateinit var title: TextView
+    private lateinit var player: ExoPlayer
+    private lateinit var channelButtons: List<Button>
     private val prefs by lazy { getSharedPreferences("sky_uno_player", MODE_PRIVATE) }
+    private val handler = Handler(Looper.getMainLooper())
+    private var activeIndex = -1
+    private var retryCount = 0
+    private var retryRunnable: Runnable? = null
+    private var fullscreen = false
+    private var diagnosticIndex = -1
+    private var diagnosticResults = mutableListOf<String>()
+    private var diagnosticTimeout: Runnable? = null
+    private var diagnosticListener: Player.Listener? = null
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.rgb(12, 15, 22)
+        window.statusBarColor = Color.rgb(10, 13, 20)
         window.navigationBarColor = Color.BLACK
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        root = FrameLayout(this)
-        val column = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(12, 15, 22))
+            setBackgroundColor(Color.rgb(10, 13, 20))
+            setPadding(dp(12), dp(8), dp(12), dp(10))
         }
-        toolbar = LinearLayout(this).apply {
+        val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(10, 8, 10, 8)
-            gravity = android.view.Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-        val title = TextView(this).apply {
+        title = TextView(this).apply {
             text = "SKY UNO PLAYER"
+            textSize = 18f
             setTextColor(Color.WHITE)
-            textSize = 16f
-            setPadding(8, 8, 8, 8)
+            setTypeface(null, android.graphics.Typeface.BOLD)
         }
-        val reload = TextView(this).apply {
-            text = "↻ Ricarica"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            setPadding(14, 10, 14, 10)
-            setOnClickListener { webView.reload() }
+        val full = Button(this).apply {
+            text = "⛶"
+            contentDescription = "Schermo intero"
+            setOnClickListener { toggleFullscreen() }
         }
-        toolbar.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
-        toolbar.addView(reload)
+        header.addView(title, LinearLayout.LayoutParams(0, dp(48), 1f))
+        header.addView(full, LinearLayout.LayoutParams(dp(56), dp(44)))
+        root.addView(header)
 
-        webView = WebView(this).apply { setBackgroundColor(Color.BLACK) }
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            mediaPlaybackRequiresUserGesture = false
-            javaScriptCanOpenWindowsAutomatically = false
-            setSupportMultipleWindows(false)
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            loadsImagesAutomatically = true
-            cacheMode = WebSettings.LOAD_DEFAULT
-            userAgentString = userAgentString.replace("; wv", "")
+        playerView = PlayerView(this).apply {
+            useController = true
+            controllerAutoShow = true
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            setBackgroundColor(Color.BLACK)
         }
-        CookieManager.getInstance().apply {
-            setAcceptCookie(true)
-            setAcceptThirdPartyCookies(webView, true)
-        }
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val host = request.url.host?.lowercase() ?: return true
-                // Keep top-level navigation inside the original page; embedded player resources
-                // continue loading normally, while external ad redirects are refused.
-                return !(host == "thedaddy.li" || host.endsWith(".thedaddy.li"))
-            }
+        root.addView(playerView, LinearLayout.LayoutParams(-1, 0, 1f))
 
-            override fun onPageFinished(view: WebView, url: String) {
-                super.onPageFinished(view, url)
-                installPopupProtection()
-                if (url.startsWith("https://thedaddy.li/")) restoreLastPlayer()
-            }
+        status = TextView(this).apply {
+            text = "Seleziona una qualità per avviare SKY UNO"
+            textSize = 13f
+            setTextColor(Color.rgb(190, 200, 215))
+            setPadding(dp(4), dp(9), dp(4), dp(9))
         }
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onCreateWindow(
-                view: WebView?,
-                isDialog: Boolean,
-                isUserGesture: Boolean,
-                resultMsg: android.os.Message?
-            ): Boolean = false
+        root.addView(status)
+        root.addView(TextView(this).apply {
+            text = "QUALITÀ DISPONIBILI"
+            textSize = 12f
+            setTextColor(Color.rgb(145, 160, 180))
+            setPadding(dp(2), dp(6), dp(2), dp(6))
+        })
 
-            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                if (view == null) return
-                if (customView != null) {
-                    callback?.onCustomViewHidden()
+        val strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        channelButtons = channels.mapIndexed { index, _ ->
+            Button(this).apply {
+                text = listOf("FULL HD", "HD", "4K", "SD", "+1", "+1 FHD", "+1 HD", "+1 SD")[index]
+                textSize = 11f
+                isAllCaps = false
+                setOnClickListener { playChannel(index) }
+            }.also { strip.addView(it, LinearLayout.LayoutParams(-2, dp(48)).apply { marginEnd = dp(6) }) }
+        }
+        root.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(strip)
+        })
+
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        actions.addView(Button(this).apply {
+            text = "↻ Riprova"
+            setOnClickListener { if (activeIndex >= 0) playChannel(activeIndex) }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        actions.addView(Button(this).apply {
+            text = "Verifica flussi"
+            setOnClickListener { runDiagnostics() }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        root.addView(actions)
+        setContentView(root)
+
+        player = ExoPlayer.Builder(this).build()
+        playerView.player = player
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (diagnosticIndex >= 0) {
+                    if (state == Player.STATE_READY) finishDiagnostic("OK")
                     return
                 }
-                customView = view
-                customViewCallback = callback
-                toolbar.visibility = View.GONE
-                webView.visibility = View.GONE
-                root.addView(view, FrameLayout.LayoutParams(-1, -1))
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                if (activeIndex >= 0 && state == Player.STATE_BUFFERING)
+                    setStatus("Connessione a ${channels[activeIndex].name}…")
+                if (activeIndex >= 0 && state == Player.STATE_READY) {
+                    retryCount = 0
+                    setStatus("In riproduzione · ${channels[activeIndex].name}")
+                }
             }
-
-            override fun onHideCustomView() {
-                exitFullscreen()
+            override fun onPlayerError(error: PlaybackException) {
+                if (diagnosticIndex >= 0) {
+                    finishDiagnostic("Non disponibile")
+                } else if (activeIndex >= 0) {
+                    setStatus("Errore di rete o flusso non disponibile. Nuovo tentativo…")
+                    scheduleRetry(activeIndex)
+                }
             }
-        }
-
-        column.addView(toolbar)
-        column.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(column)
-        setContentView(root)
-        webView.loadUrl(startUrl)
+        })
+        playChannel(prefs.getInt("last_channel", 0).coerceIn(0, channels.lastIndex))
     }
 
-    private fun installPopupProtection() {
-        val js = """
-            (function() {
-              if (window.__skyUnoPopupGuard) return;
-              window.__skyUnoPopupGuard = true;
-
-              // Refuse script-created windows/popups.
-              try {
-                window.open = function() { return null; };
-              } catch (e) {}
-
-              // Refuse links and forms that try to open a separate tab/window.
-              document.addEventListener('click', function(e) {
-                var node = e.target;
-                var link = node && node.closest ? node.closest('a[target="_blank"]') : null;
-                if (link) {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                }
-              }, true);
-
-              document.addEventListener('submit', function(e) {
-                var form = e.target;
-                if (form && (form.target || '').toLowerCase() === '_blank') {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                }
-              }, true);
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(js, null)
+    private fun playChannel(index: Int) {
+        if (index !in channels.indices) return
+        stopDiagnostics()
+        retryRunnable?.let(handler::removeCallbacks)
+        retryRunnable = null
+        retryCount = 0
+        activeIndex = index
+        prefs.edit().putInt("last_channel", index).apply()
+        title.text = channels[index].name
+        channelButtons.forEachIndexed { i, b -> b.alpha = if (i == index) 1f else 0.72f }
+        setStatus("Connessione a ${channels[index].name}…")
+        player.stop()
+        player.setMediaItem(MediaItem.fromUri(channels[index].url))
+        player.prepare()
+        player.playWhenReady = true
     }
 
-    private fun restoreLastPlayer() {
-        val last = prefs.getInt("last_player", 0)
-        val js = """
-            (function() {
-              if (window.__skyUnoRestoreInstalled) return;
-              window.__skyUnoRestoreInstalled = true;
-              function playerNumber(el) {
-                if (!el) return 0;
-                var s = (el.innerText || el.textContent || '').trim();
-                var m = s.match(/^Player\s*([1-7])$/i);
-                return m ? parseInt(m[1], 10) : 0;
-              }
-              document.addEventListener('click', function(e) {
-                var el = e.target;
-                for (var i = 0; el && i < 5; i++, el = el.parentElement) {
-                  var n = playerNumber(el);
-                  if (n) {
-                    localStorage.setItem('skyUnoLastPlayer', String(n));
-                    AndroidPlayerStore.save(n);
-                    break;
-                  }
-                }
-              }, true);
-              var wanted = $last;
-              if (wanted >= 1 && wanted <= 7) {
-                var nodes = Array.from(document.querySelectorAll('a,button,[role=button],li,span,div'));
-                var found = nodes.find(function(el) { return playerNumber(el) === wanted; });
-                if (found) found.click();
-              }
-            })();
-        """.trimIndent()
-        webView.addJavascriptInterface(PlayerStoreBridge(), "AndroidPlayerStore")
-        webView.evaluateJavascript(js, null)
-    }
-
-    inner class PlayerStoreBridge {
-        @android.webkit.JavascriptInterface
-        fun save(number: Int) {
-            if (number in 1..7) prefs.edit().putInt("last_player", number).apply()
-        }
-    }
-
-    private fun exitFullscreen() {
-        val view = customView ?: return
-        root.removeView(view)
-        customView = null
-        customViewCallback?.onCustomViewHidden()
-        customViewCallback = null
-        toolbar.visibility = View.VISIBLE
-        webView.visibility = View.VISIBLE
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-    }
-
-    @Deprecated("Deprecated in Android")
-    override fun onBackPressed() {
-        if (customView != null) {
-            exitFullscreen()
+    private fun scheduleRetry(index: Int) {
+        if (retryCount >= 3) {
+            setStatus("Non disponibile dopo 3 tentativi. Prova un'altra qualità.")
             return
         }
-        if (::webView.isInitialized && webView.canGoBack()) webView.goBack() else super.onBackPressed()
+        retryCount++
+        val delay = (2000L shl (retryCount - 1)).coerceAtMost(12000L)
+        retryRunnable = Runnable { if (activeIndex == index) playChannel(index) }
+        handler.postDelayed(retryRunnable!!, delay)
     }
 
-    override fun onDestroy() {
-        if (::webView.isInitialized) {
-            webView.stopLoading()
-            webView.destroy()
+    private fun runDiagnostics() {
+        retryRunnable?.let(handler::removeCallbacks)
+        retryRunnable = null
+        stopDiagnostics()
+        diagnosticResults = MutableList(channels.size) { "In attesa" }
+        diagnosticIndex = 0
+        player.stop()
+        testNextDiagnostic()
+    }
+
+    private fun testNextDiagnostic() {
+        if (diagnosticIndex !in channels.indices) {
+            activeIndex = -1
+            player.stop()
+            setStatus(diagnosticResults.mapIndexed { i, s -> "${i + 1}: $s" }.joinToString(" · "))
+            diagnosticIndex = -1
+            return
         }
+        val i = diagnosticIndex
+        setStatus("Verifica ${i + 1}/${channels.size} · ${channels[i].name}")
+        player.setMediaItem(MediaItem.fromUri(channels[i].url))
+        player.prepare()
+        player.playWhenReady = true
+        diagnosticTimeout = Runnable { finishDiagnostic("Timeout") }
+        handler.postDelayed(diagnosticTimeout!!, 12000)
+    }
+
+    private fun finishDiagnostic(result: String) {
+        if (diagnosticIndex !in channels.indices) return
+        diagnosticTimeout?.let(handler::removeCallbacks)
+        diagnosticTimeout = null
+        diagnosticResults[diagnosticIndex] = result
+        diagnosticIndex++
+        handler.post { testNextDiagnostic() }
+    }
+
+    private fun stopDiagnostics() {
+        diagnosticTimeout?.let(handler::removeCallbacks)
+        diagnosticTimeout = null
+        diagnosticIndex = -1
+    }
+
+    private fun toggleFullscreen() {
+        fullscreen = !fullscreen
+        requestedOrientation = if (fullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (fullscreen) window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+    }
+
+    private fun setStatus(message: String) { status.text = message }
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    override fun onDestroy() {
+        retryRunnable?.let(handler::removeCallbacks)
+        stopDiagnostics()
+        if (::player.isInitialized) {
+            playerView.player = null
+            player.release()
+        }
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onDestroy()
     }
 }
