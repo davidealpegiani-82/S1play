@@ -938,7 +938,7 @@
                     }
                     const read = (obj, keys) => {
                         for (const key of keys) {
-                            const keyMatch = obj.match(new RegExp("\\b" + key + "\\s*:"));
+                            const keyMatch = obj.match(new RegExp("[\"\']?\\b" + key + "[\"\']?\\s*:"));
                             if (!keyMatch) continue;
                             let p = obj.indexOf(':', keyMatch.index) + 1;
                             while (/\s/.test(obj[p] || '')) p++;
