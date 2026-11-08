@@ -849,7 +849,7 @@
                 alert('Per generare un link HTTPS, pubblica prima questo file su GitHub Pages, Netlify o un altro hosting HTTPS. Dopo la pubblicazione, il pulsante genererà i link condivisibili.');
                 return;
             }
-            const link = location.href.split('#')[0] + '#channels=' + encodeBase64Url(JSON.stringify(channels));
+            const playerUrl = new URL('player.html', location.href);\n            playerUrl.hash = 'channels=' + encodeBase64Url(JSON.stringify(channels));\n            const link = playerUrl.href;
             if (link.length > 8000) {
                 alert('La playlist è troppo grande per essere condivisa in modo affidabile tramite un link. In questo caso usa “Scarica HTML” oppure serve un hosting con salvataggio dei file.');
                 return;
