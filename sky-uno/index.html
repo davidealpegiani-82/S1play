@@ -940,7 +940,7 @@
                     }
                     const read = (obj, keys) => {
                         for (const key of keys) {
-                            const re = new RegExp('(?:^|[,\\s])["\\\\']?' + key + '["\\\\']?\\\\s*:\\\\s*("(?:\\\\\\\\.|[^"\\\\\\\\])*"|\\\\'(?:\\\\\\\\.|[^'\\\\\\\\])*\\\\')', 'i');
+                            const re = new RegExp(String.raw`(?:^|[,\\s])["']?${key}["']?\\s*:\\s*("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*')`, 'i');
                             const m = obj.match(re);
                             if (m) return decodeStringLiteral(m[1]);
                         }
