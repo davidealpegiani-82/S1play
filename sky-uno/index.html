@@ -895,32 +895,30 @@
             if (literal[0] === '"') {
                 try { return JSON.parse(literal); } catch (e) { return literal.slice(1, -1); }
             }
-            return literal.slice(1, -1).replace(/\\\\'/g, "'").replace(/\\\\n/g, "\n").replace(/\\\\r/g, "\r").replace(/\\\\t/g, "\t").replace(/\\\\\\\\/g, "\\\\");
+            return literal.slice(1, -1).replace(/\\'/g, "'").replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\\\/g, "\\");
         }
 
         function extractChannelsFromContent(content) {
-            // JSON puro
             try {
                 const data = JSON.parse(content);
                 if (Array.isArray(data)) return data;
             } catch (e) {}
 
-            // Array JavaScript "const channels = [...]": estrae i campi senza pretendere JSON perfetto.
-            const arrayStart = content.search(/(?:const|let|var)\\s+channels\\s*=\\s*\\[/i);
-            if (arrayStart >= 0) {
-                const open = content.indexOf('[', arrayStart);
+            const arrayMatch = content.match(/(?:const|let|var)\s+channels\s*=\s*\[/i);
+            if (arrayMatch) {
+                const open = content.indexOf('[', arrayMatch.index);
                 let depth = 0, quote = null, escaped = false, close = -1;
                 for (let i = open; i < content.length; i++) {
                     const ch = content[i];
                     if (quote) {
                         if (escaped) escaped = false;
-                        else if (ch === "\\\\") escaped = true;
+                        else if (ch === '\\') escaped = true;
                         else if (ch === quote) quote = null;
                         continue;
                     }
                     if (ch === '"' || ch === "'") { quote = ch; continue; }
                     if (ch === '[') depth++;
-                    if (ch === ']' && --depth === 0) { close = i; break; }
+                    else if (ch === ']') { depth--; if (depth === 0) { close = i; break; } }
                 }
                 if (close > open) {
                     const arrayText = content.slice(open + 1, close);
@@ -930,38 +928,47 @@
                         const ch = arrayText[i];
                         if (quote) {
                             if (escaped) escaped = false;
-                            else if (ch === "\\\\") escaped = true;
+                            else if (ch === '\\') escaped = true;
                             else if (ch === quote) quote = null;
                             continue;
                         }
                         if (ch === '"' || ch === "'") { quote = ch; continue; }
                         if (ch === '{') { if (objDepth === 0) objStart = i; objDepth++; }
-                        if (ch === '}' && objDepth > 0 && --objDepth === 0) objects.push(arrayText.slice(objStart, i + 1));
+                        else if (ch === '}' && objDepth > 0) { objDepth--; if (objDepth === 0) objects.push(arrayText.slice(objStart, i + 1)); }
                     }
                     const read = (obj, keys) => {
                         for (const key of keys) {
-                            const re = new RegExp(String.raw`(?:^|[,\\s])["']?${key}["']?\\s*:\\s*("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*')`, 'i');
-                            const m = obj.match(re);
-                            if (m) return decodeStringLiteral(m[1]);
+                            const keyMatch = obj.match(new RegExp("\\b" + key + "\\s*:"));
+                            if (!keyMatch) continue;
+                            let p = obj.indexOf(':', keyMatch.index) + 1;
+                            while (/\s/.test(obj[p] || '')) p++;
+                            const q = obj[p];
+                            if (q !== '"' && q !== "'") continue;
+                            let escapedValue = false, finish = -1;
+                            for (let j = p + 1; j < obj.length; j++) {
+                                if (escapedValue) escapedValue = false;
+                                else if (obj[j] === '\\') escapedValue = true;
+                                else if (obj[j] === q) { finish = j; break; }
+                            }
+                            if (finish > p) return decodeStringLiteral(obj.slice(p, finish + 1));
                         }
                         return '';
                     };
                     const parsed = objects.map(obj => ({
-                        name: read(obj, ['name','title','tvg-name']),
-                        logo: read(obj, ['logo','tvg-logo','image']),
+                        name: read(obj, ['name','title']),
+                        logo: read(obj, ['logo','image']),
                         url: read(obj, ['url','src','stream','link'])
                     })).filter(ch => ch.name && ch.url);
                     if (parsed.length) return parsed;
                 }
             }
 
-            // Playlist M3U: #EXTINF seguito dall'URL del flusso.
-            if (content.includes('#EXTINF')) {
-                const lines = content.replace(/\\r/g, '').split('\\n');
+            if (/#EXTINF/i.test(content)) {
+                const lines = content.replace(/\r/g, '').split(/\n/);
                 const result = [];
                 let pending = null;
                 for (const line of lines) {
-                    if (line.startsWith('#EXTINF')) {
+                    if (/^#EXTINF/i.test(line.trim())) {
                         const name = (line.match(/,(.*)$/) || [,''])[1].trim();
                         const logo = (line.match(/tvg-logo=["']([^"']+)["']/i) || [,''])[1];
                         pending = { name, logo };
