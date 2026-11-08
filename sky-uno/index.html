@@ -890,47 +890,111 @@
             }
         }
 
-        // Estrazione automatica array canali dal file caricato
-        fileInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
+        // Estrae canali da HTML/JS con array channels, JSON e playlist M3U.
+        function decodeStringLiteral(literal) {
+            if (literal[0] === '"') {
+                try { return JSON.parse(literal); } catch (e) { return literal.slice(1, -1); }
+            }
+            return literal.slice(1, -1).replace(/\\\\'/g, "'").replace(/\\\\n/g, "\n").replace(/\\\\r/g, "\r").replace(/\\\\t/g, "\t").replace(/\\\\\\\\/g, "\\\\");
+        }
 
+        function extractChannelsFromContent(content) {
+            // JSON puro
+            try {
+                const data = JSON.parse(content);
+                if (Array.isArray(data)) return data;
+            } catch (e) {}
+
+            // Array JavaScript "const channels = [...]": estrae i campi senza pretendere JSON perfetto.
+            const arrayStart = content.search(/(?:const|let|var)\\s+channels\\s*=\\s*\\[/i);
+            if (arrayStart >= 0) {
+                const open = content.indexOf('[', arrayStart);
+                let depth = 0, quote = null, escaped = false, close = -1;
+                for (let i = open; i < content.length; i++) {
+                    const ch = content[i];
+                    if (quote) {
+                        if (escaped) escaped = false;
+                        else if (ch === "\\\\") escaped = true;
+                        else if (ch === quote) quote = null;
+                        continue;
+                    }
+                    if (ch === '"' || ch === "'") { quote = ch; continue; }
+                    if (ch === '[') depth++;
+                    if (ch === ']' && --depth === 0) { close = i; break; }
+                }
+                if (close > open) {
+                    const arrayText = content.slice(open + 1, close);
+                    const objects = [];
+                    let objDepth = 0, objStart = -1; quote = null; escaped = false;
+                    for (let i = 0; i < arrayText.length; i++) {
+                        const ch = arrayText[i];
+                        if (quote) {
+                            if (escaped) escaped = false;
+                            else if (ch === "\\\\") escaped = true;
+                            else if (ch === quote) quote = null;
+                            continue;
+                        }
+                        if (ch === '"' || ch === "'") { quote = ch; continue; }
+                        if (ch === '{') { if (objDepth === 0) objStart = i; objDepth++; }
+                        if (ch === '}' && objDepth > 0 && --objDepth === 0) objects.push(arrayText.slice(objStart, i + 1));
+                    }
+                    const read = (obj, keys) => {
+                        for (const key of keys) {
+                            const re = new RegExp('(?:^|[,\\s])["\\\\']?' + key + '["\\\\']?\\\\s*:\\\\s*("(?:\\\\\\\\.|[^"\\\\\\\\])*"|\\\\'(?:\\\\\\\\.|[^'\\\\\\\\])*\\\\')', 'i');
+                            const m = obj.match(re);
+                            if (m) return decodeStringLiteral(m[1]);
+                        }
+                        return '';
+                    };
+                    const parsed = objects.map(obj => ({
+                        name: read(obj, ['name','title','tvg-name']),
+                        logo: read(obj, ['logo','tvg-logo','image']),
+                        url: read(obj, ['url','src','stream','link'])
+                    })).filter(ch => ch.name && ch.url);
+                    if (parsed.length) return parsed;
+                }
+            }
+
+            // Playlist M3U: #EXTINF seguito dall'URL del flusso.
+            if (content.includes('#EXTINF')) {
+                const lines = content.replace(/\\r/g, '').split('\\n');
+                const result = [];
+                let pending = null;
+                for (const line of lines) {
+                    if (line.startsWith('#EXTINF')) {
+                        const name = (line.match(/,(.*)$/) || [,''])[1].trim();
+                        const logo = (line.match(/tvg-logo=["']([^"']+)["']/i) || [,''])[1];
+                        pending = { name, logo };
+                    } else if (pending && line.trim() && !line.trim().startsWith('#')) {
+                        result.push({ ...pending, url: line.trim() });
+                        pending = null;
+                    }
+                }
+                return result;
+            }
+            return null;
+        }
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = function(evt) {
-                const content = evt.target.result;
-                let parsedChannels = null;
-
-                // Prova 1: cerca const channels = [...]
-                const match = content.match(/const\s+channels\s*=\s*(\[[\s\S]*?\]);/);
-                if (match && match[1]) {
-                    try {
-                        parsedChannels = JSON.parse(match[1]);
-                    } catch (err) {}
+                const parsed = extractChannelsFromContent(String(evt.target.result || ''));
+                if (!Array.isArray(parsed)) {
+                    alert("Non riesco a leggere i canali da questo file. Prova con l'HTML originale della playlist oppure con il file M3U.");
+                    return;
                 }
-
-                // Prova 2: se è un JSON puro
-                if (!parsedChannels) {
-                    try {
-                        const maybe = JSON.parse(content);
-                        if (Array.isArray(maybe)) parsedChannels = maybe;
-                    } catch (err) {}
-                }
-
-                if (parsedChannels && Array.isArray(parsedChannels)) {
-                    // Filtra solo Sky Uno
-                    channels = parsedChannels.filter(ch => ch.name && ch.name.toUpperCase().includes("SKY UNO"));
-
-                    renderChannels();
-                    if (channels.length > 0) {
-                        loadChannel(0);
-                        showToast(`Trovati ${channels.length} canali Sky Uno`);
-                    } else {
-                        alert("File letto, ma non è stato trovato alcun canale 'Sky Uno'.");
-                    }
+                channels = parsed.filter(ch => ch && ch.name && /SKY\\s*UNO/i.test(ch.name) && typeof ch.url === 'string' && ch.url.trim());
+                renderChannels();
+                if (channels.length) {
+                    loadChannel(0);
+                    showToast('Trovati ' + channels.length + ' canali Sky Uno');
                 } else {
-                    alert("Impossibile trovare la struttura dei canali nel file selezionato.");
+                    alert("Il file è stato letto, ma non contiene canali con nome 'Sky Uno'.");
                 }
             };
+            reader.onerror = function() { alert("Errore durante la lettura del file selezionato."); };
             reader.readAsText(file);
         });
 
