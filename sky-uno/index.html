@@ -845,28 +845,37 @@
                 alert('Carica prima una playlist ed estrai i canali Sky Uno.');
                 return;
             }
-            if (!/^https?:$/.test(location.protocol) || location.protocol === 'file:') {
-                alert('Per generare un link HTTPS, pubblica prima questo file su GitHub Pages, Netlify o un altro hosting HTTPS. Dopo la pubblicazione, il pulsante genererà i link condivisibili.');
+            if (location.protocol !== 'https:' && location.protocol !== 'http:') {
+                alert('Apri l’estrattore dal sito pubblicato su GitHub Pages per generare un link condivisibile.');
                 return;
             }
-            const playerUrl = new URL('player.html', location.href);\n            playerUrl.hash = 'channels=' + encodeBase64Url(JSON.stringify(channels));\n            const link = playerUrl.href;
+
+            const playerUrl = new URL('player.html', location.href);
+            playerUrl.hash = 'channels=' + encodeBase64Url(JSON.stringify(channels));
+            const link = playerUrl.href;
+
             if (link.length > 8000) {
-                alert('La playlist è troppo grande per essere condivisa in modo affidabile tramite un link. In questo caso usa “Scarica HTML” oppure serve un hosting con salvataggio dei file.');
+                alert('I dati dei canali generano un link troppo lungo. Prova a caricare una playlist con meno varianti oppure usa “Scarica HTML”.');
                 return;
             }
+
             try {
                 if (navigator.share) {
-                    await navigator.share({ title: 'Sky Uno Player', text: 'Apri il player Sky Uno con i canali già caricati:', url: link });
-                    showToast('Link pronto per la condivisione');
+                    await navigator.share({
+                        title: 'Sky Uno Player',
+                        text: 'Apri il player Sky Uno con i canali già caricati:',
+                        url: link
+                    });
+                    showToast('✅ Link pronto per la condivisione');
                 } else if (navigator.clipboard && window.isSecureContext) {
                     await navigator.clipboard.writeText(link);
-                    showToast('✅ Link HTTPS copiato! Puoi condividerlo');
+                    showToast('✅ Link copiato! Ora puoi incollarlo e condividerlo.');
                 } else {
-                    window.prompt('Copia questo link HTTPS e condividilo:', link);
+                    window.prompt('Copia questo link per condividere il player Sky Uno:', link);
                 }
             } catch (err) {
                 if (err && err.name !== 'AbortError') {
-                    window.prompt('Copia questo link HTTPS e condividilo:', link);
+                    window.prompt('Copia questo link per condividere il player Sky Uno:', link);
                 }
             }
         }
