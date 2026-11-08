@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sky Uno Player</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;font-family:Arial,sans-serif;overflow:hidden}
+.app{width:100%;height:100%;display:flex;flex-direction:column}.player{height:42vh;min-height:220px;display:flex;flex-direction:column;background:#000;border-bottom:1px solid #222}
+.top{padding:12px;min-height:52px;font-size:14px;font-weight:bold;border-bottom:1px solid #222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.video{flex:1;min-height:0}video{width:100%;height:100%;object-fit:contain;background:#000;display:block}
+.list{flex:1;min-height:0;display:flex;flex-direction:column;background:#0b0b0b}.heading{padding:12px;background:#111;font-size:14px;font-weight:bold;border-bottom:1px solid #222}.scroll{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse}tr{border-bottom:1px solid #222;cursor:pointer}tr.active{background:#073044}td{padding:10px 8px;font-size:14px}.logo{width:42px;height:42px;object-fit:contain;border-radius:7px;background:#1a1a1a}.col-logo{width:58px;text-align:center}.sub{font-size:12px;opacity:.7;margin-top:3px}.badge{background:#00cfff;color:#000;border-radius:30px;padding:6px 9px;font-size:12px;font-weight:bold;white-space:nowrap}
+.status{padding:16px;text-align:center;color:#bbb;font-size:14px}
+@media(min-width:900px){.app{flex-direction:row-reverse;align-items:flex-start}.player{width:70vw;height:46vh;min-height:320px;max-height:520px}.list{width:30vw;height:100vh;flex:none}}
+</style>
+</head>
+<body><div class="app">
+<section class="player"><div class="top" id="title">Sky Uno Player</div><div class="video"><video id="video" controls autoplay playsinline webkit-playsinline preload="auto"></video></div></section>
+<section class="list"><div class="heading" id="heading">Canali Sky Uno</div><div class="scroll"><table><tbody id="rows"></tbody></table><div class="status" id="status">Caricamento canali…</div></div></section>
+</div>
+<script>
+let channels=[],active=-1,hls=null,watchdog=null;
+const video=document.getElementById('video'),title=document.getElementById('title'),rows=document.getElementById('rows'),status=document.getElementById('status');
+function decode(value){const b=value.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-value.length%4)%4);const raw=atob(b);const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));return new TextDecoder().decode(bytes)}
+function ios(){const ua=navigator.userAgent||'';return /iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
+const config={enableWorker:true,lowLatencyMode:false,backBufferLength:60,maxBufferLength:90,maxMaxBufferLength:180,maxBufferSize:150000000,maxBufferHole:.5,liveSyncDurationCount:5,liveMaxLatencyDurationCount:15,manifestLoadingTimeOut:20000,manifestLoadingMaxRetry:5,levelLoadingTimeOut:20000,levelLoadingMaxRetry:5,fragLoadingTimeOut:20000,fragLoadingMaxRetry:6};
+function playSource(ch){
+ if(hls){hls.destroy();hls=null}if(watchdog){clearInterval(watchdog);watchdog=null}
+ video.pause();video.removeAttribute('src');video.load();
+ const native=ios()||video.canPlayType('application/vnd.apple.mpegurl');
+ if(native&&(ios()||!Hls.isSupported())){video.src=ch.url;video.play().catch(()=>{});return}
+ if(Hls.isSupported()){
+  hls=new Hls(config);hls.loadSource(ch.url);hls.attachMedia(video);
+  hls.on(Hls.Events.MANIFEST_PARSED,()=>video.play().catch(()=>{}));
+  hls.on(Hls.Events.ERROR,(event,data)=>{if(!data.fatal)return;
+   if(data.type===Hls.ErrorTypes.NETWORK_ERROR){status.textContent='Connessione allo stream non riuscita. Il link potrebbe essere scaduto o il server non raggiungibile.';try{hls.startLoad()}catch(e){}}
+   else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){try{hls.recoverMediaError()}catch(e){status.textContent='Formato video non riproducibile.'}}
+   else{status.textContent='Stream non riproducibile su questo dispositivo.';hls.destroy();hls=null}
+  });
+ }else{video.src=ch.url;video.play().catch(()=>{})}
+}
+function select(i){if(!channels[i])return;active=i;title.textContent=channels[i].name||'Sky Uno';document.querySelectorAll('tr[data-i]').forEach(r=>r.classList.toggle('active',Number(r.dataset.i)===i));status.textContent='';playSource(channels[i])}
+function render(){
+ document.getElementById('heading').textContent='Canali Sky Uno: '+channels.length;rows.innerHTML='';
+ channels.forEach((ch,i)=>{const tr=document.createElement('tr');tr.dataset.i=i;const a=document.createElement('td');a.className='col-logo';const img=document.createElement('img');img.className='logo';img.alt=ch.name||'logo';img.src=ch.logo||'';img.onerror=()=>img.style.visibility='hidden';a.appendChild(img);
+ const b=document.createElement('td');const name=document.createElement('div');name.textContent=ch.name||'Canale';name.style.fontWeight='bold';const sub=document.createElement('div');sub.className='sub';sub.textContent='Tocca per riprodurre';b.append(name,sub);
+ const c=document.createElement('td');c.style.textAlign='right';const badge=document.createElement('span');badge.className='badge';badge.textContent='▶ Guarda';c.appendChild(badge);tr.append(a,b,c);tr.addEventListener('click',()=>select(i));rows.appendChild(tr)});
+ if(!channels.length)status.textContent='Nessun canale presente nel link.';
+}
+try{
+ const m=location.hash.match(/(?:^#|&)channels=([^&]+)/);
+ if(!m)throw new Error('missing');
+ channels=JSON.parse(decode(m[1]));
+ if(!Array.isArray(channels)||!channels.length||channels.some(c=>!c||typeof c.url!=='string'||!/^https?:\/\//i.test(c.url)))throw new Error('invalid');
+ render();select(0);
+}catch(e){status.textContent='Link incompleto o non valido. Chiedi a chi te lo ha inviato di generare un nuovo link dalla playlist aggiornata.'}
+window.addEventListener('pagehide',()=>{if(hls)hls.destroy();if(watchdog)clearInterval(watchdog)});
+</script></body></html>
